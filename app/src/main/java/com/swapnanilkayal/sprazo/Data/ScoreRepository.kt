@@ -71,7 +71,7 @@ class ScoreRepository(private val scorePref: SharedPreferences) {
         val rIndex = lessonIndexRMap[scoreUID]
         if (rIndex == null) return true
         else if (rIndex == 0) return false
-        else return (scoreMap[lessonUids[rIndex]] ?: 0) <= 0
+        else return ((scoreMap[lessonUids[rIndex-1]]?:0)+ (scoreMap[lessonUids[rIndex]]?:0)) <= 0
     }
 
     fun staticGet(key: String):Int?{

@@ -61,7 +61,8 @@ class QuestionState(val questionId:String, val lessonId: String, val unitId: Str
     val wordChosen = mutableStateListOf<String>()
     var textInput by mutableStateOf("")
     var sessionTriesLeft by mutableStateOf(2)
-    var TriesLeft by mutableStateOf(2)
+    val maxRetry = difficulties.size - difficulties.indexOf(difficulty)
+    var TriesLeft by mutableStateOf(maxRetry)
     var ResultState by mutableStateOf(Result.INCOMPLETE)
     var summary by mutableStateOf("")
     init {
@@ -72,9 +73,11 @@ class QuestionState(val questionId:String, val lessonId: String, val unitId: Str
             qAud = it.questionAudio
             answers = it.answers
             options = it.options
-            defaultWordPool.addAll(it.rWordPools?.get(diffOrdinal.coerceAtMost(it.rWordPools.size-1))?:listOf())
-            defaultWordPool.addAll(answers?.get(0)?.split(" ")?:listOf())
-            defaultWordPool.shuffle()
+            if (question?.rWordPools != null){
+                defaultWordPool.addAll(it.rWordPools?.get(diffOrdinal.coerceAtMost(it.rWordPools.size-1))?:listOf())
+                defaultWordPool.addAll(answers?.get(0)?.split(" ")?:listOf())
+                defaultWordPool.shuffle()
+            }
             wordPool.addAll(defaultWordPool)
         }
         if (options != null && question?.options?.isNotEmpty()?:false){
@@ -123,7 +126,7 @@ class QuestionState(val questionId:String, val lessonId: String, val unitId: Str
     fun typoAwareWordCheck(c: Pair<String, String>): Pair<String,Float>{
         val word = c.first.trim()
         val correctAnswer = c.second.trim()
-        if (word == correctAnswer) return word to 1.0f
+        if (word == correctAnswer) return correctAnswer to 1.0f
         var confidence = 0f
         if (word.length == correctAnswer.length) confidence += 0.2f
         val lack = 1 - confidence
@@ -132,7 +135,7 @@ class QuestionState(val questionId:String, val lessonId: String, val unitId: Str
             if (word[i] == correctAnswer[i]) confidence += confMultiplier
             else if (word[i].lowercase() == correctAnswer[i].lowercase()) confidence += confMultiplier*0.5f
         }
-        return word to confidence.coerceAtMost(1f)
+        return correctAnswer to confidence.coerceAtMost(1f)
     }
     fun typoAwareStringCheck(text:String, correctAnswer:String): Triple<List<String>,List<Pair<String,Int>>, Float>{
         val segText = text.split(" ").map { it.trim()}.filter { it.isNotBlank() }
@@ -157,19 +160,13 @@ class QuestionState(val questionId:String, val lessonId: String, val unitId: Str
         val (segText,typoTrack,confidence) = fuzzyAnswer
         summary = ""
         val rState: Boolean = confidence >= difficulty.typoConfidenceThreshold
-        if (confidence == 1.0f){
-            summary = "Correct"
-        } else {
-            if (rState) {
-                summary = "Correct with typos"
-            } else {
-                summary = "Incorrect"
-            }
+        if (confidence != 1.0f && rState){
+            summary = "Correct with Typos"
         }
         if (typoTrack.isNotEmpty()){
             summary += "\n Typos: \n"
             typoTrack.forEach { (correctWord,pos) ->
-                summary += "\n ${segText[pos]} in place of $correctWord"
+                summary += "${segText[pos]} in place of $correctWord\n"
             }
         }
         return rState
@@ -209,11 +206,12 @@ class QuestionState(val questionId:String, val lessonId: String, val unitId: Str
             if (checkText(textInput)) setResult(Result.PASS)
             else if (!autoSubmit) setResult(Result.FAIL)
         }
+        summary += "\nCorrect: ${answers?.get(0)?:options?.filter { it.isCorrect }?.get(0)?.string?:"Unknown"}"
     }
     fun getPass(): Boolean = ResultState == Result.PASS
     fun retry(){
         ResultState = Result.INCOMPLETE
-        TriesLeft = 2
+        TriesLeft = maxRetry
         textInput = ""
         selectedOption = null
         wordChosen.clear()
@@ -265,8 +263,8 @@ class LessonViewModel(val sectionId:String, val unitId: String, val lessonId: St
         assert(loadedQuestions.size == questionCount)
     }
     fun reachCompletion(){
-        netScore = loadedQuestions.filter { correctQuestions.map {idx -> loadedQuestions[idx]}.contains(it) }.sumOf { it.question?.points?:0 }
-        xpEarned = lessonDifficulty.getXpEarned((netScore/ getLessonMaxScore(lessonId)).toDouble()).coerceAtLeast(0)
+        netScore = loadedQuestions.filter { correctQuestions.map {idx -> loadedQuestions[idx]}.contains(it) }.sumOf { it.question?.points?:1 }
+        xpEarned = lessonDifficulty.getXpEarned((netScore.toDouble()/ getLessonMaxScore(lessonId))).coerceAtLeast(0)
         earnedGems = lessonDifficulty.getGemReward(xpEarned,mistakesMade).coerceAtLeast(0)
         Repositories.streakRepository.placeStreak(LocalDate.now(), StreakTypes.STREAK_CONTINUE)
         Repositories.inventoryRepository.addXP(xpEarned)
@@ -274,7 +272,7 @@ class LessonViewModel(val sectionId:String, val unitId: String, val lessonId: St
         Repositories.scoreRepository[getLessonUID(lessonId,unitId,sectionId,"SCORE")] = netScore
         phase = Phases.LESSON_COMPLETE
     }
-    fun next(){
+    fun next(skipWish: Boolean = false){
         val maxLife = lessonDifficulty.getMaxLifeCount(Repositories.streakRepository.streakCount)
         if (lifeEssence > 0.9f && maxLife > 0 && livesLeft < maxLife) {
             livesLeft++
@@ -289,18 +287,22 @@ class LessonViewModel(val sectionId:String, val unitId: String, val lessonId: St
                 phase = Phases.LESSON_ONGOING
             }
             Phases.LESSON_ONGOING -> {
-                if (questionNumber < questionCount-1){
+                if (questionNumber < questionCount){
                     val isCurrentQuestionPassed = loadedQuestions[questionNumber].getPass()
                     if (isCurrentQuestionPassed) {
+
                         correctQuestions.add(questionNumber)
                     }
                     else {
                         mistakenQuestions.add(questionNumber)
                         mistakesMade++
                     }
+
+                }
+                if (questionNumber < questionCount - 1){
                     questionNumber++
                 } else{
-                    if (mistakenQuestions.isNotEmpty()) {
+                    if (mistakenQuestions.isNotEmpty() && mistakenQuestions.any { loadedQuestions[it].TriesLeft > 0 }) {
                         phase = Phases.LESSON_MISTAKE_ACKNOWLEDGEMENT
                     }
                     else {
@@ -309,6 +311,11 @@ class LessonViewModel(val sectionId:String, val unitId: String, val lessonId: St
                 }
             }
             Phases.LESSON_MISTAKE_ACKNOWLEDGEMENT -> {
+                Log.d("LessonViewModel", "Mistakes Made: $mistakesMade with skipWish = $skipWish")
+                if (skipWish) {
+                    reachCompletion()
+                    return
+                }
                 mistakenQuestions.forEach {
                     loadedQuestions[it].retry()
                 }
@@ -324,36 +331,38 @@ class LessonViewModel(val sectionId:String, val unitId: String, val lessonId: St
             Phases.LESSON_MISTAKE_REVIEW -> {
                 val current = loadedQuestions[questionNumber]
                 current.TriesLeft--
-                val isReviewPassed = current.getPass()
-                if (isReviewPassed) {
+                if (current.getPass()) {
                     correctQuestions.add(questionNumber)
                     mistakenQuestions.remove(questionNumber)
                     mistakesCorrected++
                 } else {
                     mistakesMade++
                 }
-                val oldMistakenQuestions = mistakenQuestions.joinToString()
+                if (skipWish) {
+                    reachCompletion()
+                    return
+                }
                 mistakenQuestions = mistakenQuestions
                     .filter {
                         val triesLeft = loadedQuestions[it].TriesLeft
                         val keep = triesLeft > 0
-                        
                         keep
                     }
                     .sortedBy { it }
                     .toMutableList()
+                mistakenQuestions.forEach { loadedQuestions[it].retry() }
                 if (mistakenQuestions.isEmpty()) {
-                    
                     reachCompletion()
                     return
                 }
                 val qNext = mistakenQuestions.firstOrNull { it > questionNumber }
-                
                 questionNumber = qNext ?: mistakenQuestions.first()
                 
             }
         }
-    }}
+        Log.d("LessonViewModel", "Correct Questions Till Now: ${correctQuestions.size} -> $correctQuestions")
+    }
+}
 class LessonViewModelFactory(val sectionId:String, val unitId: String, val lessonId: String, val difficulty: Int): Factory{
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LessonViewModel::class.java)){

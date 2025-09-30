@@ -26,7 +26,9 @@ data class Difficulty(
     val getMaxFrozenStreakCount: (currentStreakCount: Int) -> Int,
     val getIsUnlocked: (exp: Int) -> Boolean = { true },
     val typoConfidenceThreshold: Double
-)
+) {
+    fun getXP(performance: Double): Int {return (getXP(performance) * xpMultiplier.toInt())}
+}
 
 val difficulties = listOf(
     Difficulty(

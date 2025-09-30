@@ -32,6 +32,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -521,6 +522,7 @@ fun OptionsInput(questionState: QuestionState) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WordChooseInput(questionState: QuestionState) {
     val chosenWords = questionState.wordChosen.toList()
@@ -755,8 +757,16 @@ fun LessonOngoingBody(model: LessonViewModel, questionNumber:Int){
             Card {
                 Column(Modifier.background(brush = Brush.verticalGradient(listOf(if (question.ResultState == Result.PASS) PassColor else FailColor,
                     MaterialTheme.colorScheme.surface)))) {
-                    Text(if (question.ResultState == Result.PASS) "Correct" else "Incorrect", style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(20.dp))
+                    Text(if (question.ResultState == Result.PASS) "Correct" else "Incorrect", style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(20.dp,10.dp,10.dp,5.dp))
+                    Text(question.summary.trim(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(20.dp,5.dp))
                     Spacer(Modifier.height(5.dp))
+                    if (model.phase == Phases.LESSON_MISTAKE_REVIEW){
+                        Button(onClick = { model.next(true) }, Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp, 5.dp, 20.dp, 10.dp)) {
+                            Text("Skip Review", style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
                     Button(onClick = { model.next() }, Modifier
                         .fillMaxWidth()
                         .padding(20.dp, 5.dp, 20.dp, 40.dp)) {
@@ -784,7 +794,7 @@ fun LessonOngoingScreen2(model: LessonViewModel){
 
 
 @Composable
-fun ReviewAcknowledgement(model: LessonViewModel, onStartReview: () -> Unit) {
+fun ReviewAcknowledgement(model: LessonViewModel, onStartReview: () -> Unit, onSkipReview:() -> Unit) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(100) 
@@ -854,28 +864,53 @@ fun ReviewAcknowledgement(model: LessonViewModel, onStartReview: () -> Unit) {
                 visible = visible,
                 enter = fadeIn(tween(500, 500)) + slideInVertically(tween(500, 500)) { it / 2 }
             ) {
-                Button(
-                    onClick = onStartReview,
-                    modifier = Modifier
-                        .fillMaxWidth(0.75f)
-                        .height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp, pressedElevation = 5.dp),
-                    enabled = mistakeCount > 0 
-                ) {
-                    Icon(
-                        Icons.Filled.PublishedWithChanges, 
-                        contentDescription = null,
-                        modifier = Modifier.size(ButtonDefaults.IconSize)
-                    )
-                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                    Text(
-                        if (mistakeCount > 0) "Start Review" else "Done",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSecondary
-                    )
+                Column {
+                    Button(
+                        onClick = onStartReview,
+                        modifier = Modifier
+                            .fillMaxWidth(0.75f)
+                            .height(52.dp).padding(0.dp,5.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp, pressedElevation = 5.dp),
+                        enabled = mistakeCount > 0
+                    ) {
+                        Icon(
+                            Icons.Filled.PublishedWithChanges,
+                            contentDescription = null,
+                            modifier = Modifier.size(ButtonDefaults.IconSize)
+                        )
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(
+                            if (mistakeCount > 0) "Start Review" else "Done",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSecondary
+                        )
+                    }
+                    Button(
+                        onClick = onSkipReview,
+                        modifier = Modifier
+                            .fillMaxWidth(0.75f)
+                            .height(52.dp).padding(0.dp,5.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp, pressedElevation = 5.dp),
+                        enabled = mistakeCount > 0
+                    ) {
+                        Icon(
+                            Icons.Filled.PublishedWithChanges,
+                            contentDescription = null,
+                            modifier = Modifier.size(ButtonDefaults.IconSize)
+                        )
+                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                        Text(
+                            if (mistakeCount > 0) "Skip Review" else "Done",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSecondary
+                        )
+                    }
                 }
             }
         }
@@ -1051,7 +1086,7 @@ fun LessonScreen(model: LessonViewModel, onExit: () -> Unit) {
                     when (it) { 
                         0 -> LessonStartScreen(model = model)
                         1 -> LessonOngoingScreen2(model)
-                        2 -> ReviewAcknowledgement(model = model, onStartReview = { model.next()})
+                        2 -> ReviewAcknowledgement(model = model, onStartReview = { model.next()}, onSkipReview = {model.next(true)})
                         3 -> LessonOngoingScreen2(model)
                         4 -> LessonEndScreen(model.xpEarned,model.earnedGems,model.netScore,model.lesson?.title ?: "the lesson", onExit)
                         else -> {

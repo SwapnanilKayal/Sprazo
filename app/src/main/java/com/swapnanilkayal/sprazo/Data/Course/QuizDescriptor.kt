@@ -63,7 +63,7 @@ fun getUnitProgress(unitID: String, sectionID:String): Double {
     return unitScore * 100.0 / maxScore
 }
 
-fun getLessonProgress(sectionID: String, unitID: String, lessonID: String) = getLessonScore(lessonID, unitID, sectionID) / getLessonMaxScore(lessonID)
+fun getLessonProgress(sectionID: String, unitID: String, lessonID: String): Float = getLessonScore(lessonID, unitID, sectionID).toFloat() / getLessonMaxScore(lessonID)
 
 /*
 class Converters {
